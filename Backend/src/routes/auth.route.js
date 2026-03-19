@@ -1,20 +1,11 @@
 import express from "express";
+import { signup,signin } from "../controllers/auth.controller.js";
 
 const router = express.Router();
 
-router.post("/signup", (req, res) => {
-  res.status(200).json({
-    message: "Signup route reached",
-    body: req.body,
-  });
-});
+router.post("/signup", signup);
 
-router.post("/signin", (req, res) => {
-  res.status(200).json({
-    message: "Signin route reached",
-    body: req.body,
-  });
-});
+router.post("/signin", signin);
 
 router.post("/logout", (req, res) => {
   res.send("Logout route");
