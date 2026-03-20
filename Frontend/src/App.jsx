@@ -9,6 +9,7 @@ import ProfilePage from "./pages/ProfilePage";
 import { useAuthStore } from "./store/useAuthStore";
 import { useEffect } from "react";
 import { Loader } from "lucide-react";
+import Footer from "./pages/Footer";
 
 function App() {
   const { authUser, checkAuth, isCheckingAuth } = useAuthStore();
@@ -31,7 +32,6 @@ function App() {
   return (
     <div>
       <Navbar />
-
       <Routes>
         <Route
           path="/"
@@ -54,6 +54,7 @@ function App() {
           element={authUser ? <ProfilePage /> : <Navigate to="/login" />}
         />
       </Routes>
+      {!authUser && <Footer />}
     </div>
   );
 }
