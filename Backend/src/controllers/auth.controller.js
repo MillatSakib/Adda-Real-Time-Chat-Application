@@ -1,10 +1,12 @@
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../lib/utils.js";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 export const signup = async (req, res) => {
   try {
-    console.log(req.body);
     const { fullName, email, password } = req.body;
 
     if (!fullName || !email || !password) {
@@ -66,8 +68,61 @@ export const signup = async (req, res) => {
   }
 };
 
+export const signin = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
+    }
 
-export const signin = (req, res) =>{
-  res.send("Signin route"); 
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
 
-}
+    const isPasswordMatch = await bcrypt.compare(password, user.password);
+    if (!isPasswordMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    //generate jwt token
+    generateToken(user._id, res);
+
+    res.status(200).json({
+      success: true,
+      message: "User signed in successfully",
+      _id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      profilePicture: user.profilePicture,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+export const logout = (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
+  res.cookie("jwt", "", { maxAge: 0 });
+  res.status(200).json({
+    success: true,
+    message: "User logged out successfully",
+  });
+};
