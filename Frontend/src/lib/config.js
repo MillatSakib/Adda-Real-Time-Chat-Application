@@ -1,4 +1,7 @@
-const rawServerUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:5005";
+const envServerUrl = import.meta.env.VITE_SERVER_URL?.trim();
+const browserOrigin =
+  typeof window !== "undefined" ? window.location.origin : "";
+const rawServerUrl = envServerUrl || browserOrigin || "http://localhost:5005";
 
 export const SERVER_URL = rawServerUrl
   .trim()

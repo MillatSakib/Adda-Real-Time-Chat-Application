@@ -1,12 +1,14 @@
+name: adda
+
 services:
   mongodb:
     image: mongo:7
-    container_name: chatty-mongodb
-    restart: unless-stopped
-    ports:
-      - "${MONGO_PORT:-27017}:27017"
+    container_name: adda-mongodb
+    restart: always
     volumes:
       - mongo_data:/data/db
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
@@ -18,8 +20,8 @@ services:
     build:
       context: ./Backend
       dockerfile: Dockerfile
-    container_name: chatty-backend
-    restart: unless-stopped
+    container_name: adda-backend
+    restart: always
     depends_on:
       mongodb:
         condition: service_healthy
@@ -27,8 +29,10 @@ services:
       - ./Backend/.env
     environment:
       PORT: 5005
-      MONGODB_URL: ${MONGODB_URL:-mongodb://mongodb:27017/adda}
+      MONGODB_URL: mongodb://mongodb:27017/adda
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+    networks:
+      - app-network
     ports:
       - "${BACKEND_PORT:-5005}:5005"
 
@@ -36,14 +40,20 @@ services:
     build:
       context: ./Frontend
       dockerfile: Dockerfile
-    container_name: chatty-frontend
-    restart: unless-stopped
+    container_name: adda-frontend
+    restart: always
     depends_on:
       - backend
     environment:
       VITE_SERVER_URL: ${VITE_SERVER_URL:-http://localhost:5005}
+    networks:
+      - app-network
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
 
 volumes:
   mongo_data:
+
+networks:
+  app-network:
+    driver: bridge
