@@ -40,12 +40,11 @@ io.on("connection", (socket) => {
 
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
-  socket.on("call:offer", ({ to, offer, caller, callType }) => {
+  socket.on("call:offer", ({ to, offer, caller }) => {
     const delivered = emitToUser(to, "call:offer", {
       from: userId,
       caller,
       offer,
-      callType,
     });
 
     if (!delivered) {

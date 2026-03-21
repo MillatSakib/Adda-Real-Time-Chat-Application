@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [tailwindcss()],
   server: {
     host: true,
-    allowedHosts: ["app-hp.millatsakib.com"],
+    allowedHosts: ["adda.millatsakib.com"],
   },
 });

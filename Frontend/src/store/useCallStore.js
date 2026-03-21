@@ -28,10 +28,8 @@ const initialState = {
   incomingCall: null,
   activeCall: null,
   callStatus: "idle",
-  callType: "audio",
   pendingCandidates: [],
   isMuted: false,
-  isCameraOff: false,
 };
 
 export const useCallStore = create((set, get) => ({
@@ -48,16 +46,15 @@ export const useCallStore = create((set, get) => ({
     socket.off("call:busy");
     socket.off("call:unavailable");
 
-    socket.on("call:offer", ({ from, caller, offer, callType }) => {
+    socket.on("call:offer", ({ from, caller, offer }) => {
       if (get().incomingCall || get().activeCall || get().callStatus !== "idle") {
         socket.emit("call:busy", { to: from });
         return;
       }
 
       set({
-        incomingCall: { from, caller, offer, callType },
+        incomingCall: { from, caller, offer },
         callStatus: "ringing",
-        callType,
       });
       toast(`${caller.fullName} is calling...`);
     });
@@ -129,25 +126,23 @@ export const useCallStore = create((set, get) => ({
     socket.off("call:unavailable");
   },
 
-  prepareLocalStream: async (callType) => {
+  prepareLocalStream: async () => {
     const existingStream = get().localStream;
     if (existingStream) return existingStream;
 
     if (!canUseCalling()) {
       throw new Error(
-        "Calling needs HTTPS or localhost so the browser can access microphone/camera.",
+        "Calling needs HTTPS or localhost so the browser can access your microphone.",
       );
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
-      video: callType === "video",
     });
 
     set({
       localStream: stream,
       isMuted: false,
-      isCameraOff: callType !== "video",
     });
 
     return stream;
@@ -225,7 +220,7 @@ export const useCallStore = create((set, get) => ({
     set({ pendingCandidates: [] });
   },
 
-  startCall: async (user, callType = "audio") => {
+  startCall: async (user) => {
     const socket = useAuthStore.getState().socket;
     const authUser = useAuthStore.getState().authUser;
 
@@ -240,12 +235,11 @@ export const useCallStore = create((set, get) => ({
     }
 
     try {
-      await get().prepareLocalStream(callType);
+      await get().prepareLocalStream();
 
       set({
-        activeCall: { user, callType },
+        activeCall: { user },
         incomingCall: null,
-        callType,
         callStatus: "calling",
       });
 
@@ -256,7 +250,6 @@ export const useCallStore = create((set, get) => ({
       socket.emit("call:offer", {
         to: user._id,
         offer,
-        callType,
         caller: {
           _id: authUser._id,
           fullName: authUser.fullName,
@@ -279,14 +272,12 @@ export const useCallStore = create((set, get) => ({
     if (!socket || !incomingCall) return;
 
     try {
-      await get().prepareLocalStream(incomingCall.callType);
+      await get().prepareLocalStream();
 
       set({
         activeCall: {
           user: incomingCall.caller,
-          callType: incomingCall.callType,
         },
-        callType: incomingCall.callType,
         incomingCall: null,
         callStatus: "connecting",
       });
@@ -321,11 +312,7 @@ export const useCallStore = create((set, get) => ({
       socket.emit("call:decline", { to: incomingCall.from });
     }
 
-    set({
-      incomingCall: null,
-      callStatus: "idle",
-      callType: "audio",
-    });
+    set({ ...initialState });
   },
 
   endCall: (notifyPeer = true) => {
@@ -362,21 +349,5 @@ export const useCallStore = create((set, get) => ({
     });
 
     set({ isMuted: nextMutedState });
-  },
-
-  toggleCamera: () => {
-    const localStream = get().localStream;
-    if (!localStream) return;
-
-    const videoTracks = localStream.getVideoTracks();
-    if (!videoTracks.length) return;
-
-    const nextCameraState = !get().isCameraOff;
-
-    videoTracks.forEach((track) => {
-      track.enabled = !nextCameraState;
-    });
-
-    set({ isCameraOff: nextCameraState });
   },
 }));
