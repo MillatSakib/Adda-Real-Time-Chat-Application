@@ -13,25 +13,46 @@ const ChatContainer = () => {
     getMessages,
     isMessagesLoading,
     selectedUser,
+    typingFeedback,
+    viewerFeedback,
+    sendViewerFeedback,
+    stopViewerFeedback,
     subscribeToMessages,
     unsubscribeFromMessages,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
+  const viewerName = authUser?.fullName || "Someone";
 
   useEffect(() => {
     getMessages(selectedUser._id);
 
     subscribeToMessages();
 
-    return () => unsubscribeFromMessages();
-  }, [selectedUser._id, getMessages, subscribeToMessages, unsubscribeFromMessages]);
+    sendViewerFeedback(
+      selectedUser._id,
+      `${viewerName} is looking at your messages like a cat.`,
+    );
+
+    return () => {
+      stopViewerFeedback(selectedUser._id);
+      unsubscribeFromMessages();
+    };
+  }, [
+    viewerName,
+    selectedUser._id,
+    getMessages,
+    sendViewerFeedback,
+    stopViewerFeedback,
+    subscribeToMessages,
+    unsubscribeFromMessages,
+  ]);
 
   useEffect(() => {
     if (messageEndRef.current && messages) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, typingFeedback, viewerFeedback]);
 
   if (isMessagesLoading) {
     return (
@@ -52,7 +73,6 @@ const ChatContainer = () => {
           <div
             key={message._id}
             className={`chat ${message.senderId === authUser._id ? "chat-end" : "chat-start"}`}
-            ref={messageEndRef}
           >
             <div className=" chat-image avatar">
               <div className="size-10 rounded-full border">
@@ -71,7 +91,7 @@ const ChatContainer = () => {
                 {formatMessageTime(message.createdAt)}
               </time>
             </div>
-            <div className="chat-bubble flex flex-col">
+            <div className="chat-bubble flex max-w-[82%] flex-col overflow-hidden sm:max-w-[75%] [overflow-wrap:anywhere]">
               {message.image && (
                 <img
                   src={message.image}
@@ -79,10 +99,21 @@ const ChatContainer = () => {
                   className="sm:max-w-[200px] rounded-md mb-2"
                 />
               )}
-              {message.text && <p>{message.text}</p>}
+              {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
             </div>
           </div>
         ))}
+        {typingFeedback && (
+          <div className="py-1 text-center text-xs italic tracking-wide text-base-content/55 animate-pulse">
+            {typingFeedback}
+          </div>
+        )}
+        {viewerFeedback && (
+          <div className="py-1 text-center text-xs italic tracking-wide text-base-content/45">
+            {viewerFeedback}
+          </div>
+        )}
+        <div ref={messageEndRef} />
       </div>
 
       <MessageInput />

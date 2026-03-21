@@ -1,13 +1,93 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { Image, Send, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuthStore } from "../store/useAuthStore";
+
+const TYPING_IDLE_DELAY = 1600;
+const TYPING_ANALYSIS_WINDOW = 4000;
+const MAX_TYPING_INTERVALS = 6;
+
+const getTypingFeedback = (fullName, intervals) => {
+  const averageInterval = intervals.length
+    ? intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length
+    : 650;
+
+  if (averageInterval < 110) {
+    return `${fullName} is typing like a caffeinated squirrel`;
+  }
+
+  if (averageInterval < 220) {
+    return `${fullName} is typing like crazy`;
+  }
+
+  if (averageInterval < 380) {
+    return `${fullName} has turbo fingers today`;
+  }
+
+  if (averageInterval < 700) {
+    return `${fullName} is typing with purpose`;
+  }
+
+  if (averageInterval < 1200) {
+    return `${fullName} is typing thoughtfully`;
+  }
+
+  return `${fullName} is typing like a tortoise`;
+};
 
 const MessageInput = () => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
-  const { sendMessage } = useChatStore();
+  const typingTimeoutRef = useRef(null);
+  const typingStartedAtRef = useRef(null);
+  const lastTypedAtRef = useRef(null);
+  const typingIntervalsRef = useRef([]);
+  const lockedFeedbackRef = useRef(null);
+  const previousSelectedUserIdRef = useRef(null);
+  const { selectedUser, sendMessage, sendTypingFeedback, stopTypingFeedback } =
+    useChatStore();
+  const authUser = useAuthStore((state) => state.authUser);
+
+  const resetTypingSession = () => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+
+    lastTypedAtRef.current = null;
+    typingStartedAtRef.current = null;
+    typingIntervalsRef.current = [];
+    lockedFeedbackRef.current = null;
+  };
+
+  const stopTypingSession = (targetUserId) => {
+    if (targetUserId) {
+      stopTypingFeedback(targetUserId);
+    }
+
+    resetTypingSession();
+  };
+
+  useEffect(() => {
+    const previousSelectedUserId = previousSelectedUserIdRef.current;
+
+    if (
+      previousSelectedUserId &&
+      previousSelectedUserId !== selectedUser?._id
+    ) {
+      stopTypingSession(previousSelectedUserId);
+    }
+
+    previousSelectedUserIdRef.current = selectedUser?._id || null;
+  }, [selectedUser?._id, stopTypingFeedback]);
+
+  useEffect(() => {
+    return () => {
+      stopTypingSession(previousSelectedUserIdRef.current);
+    };
+  }, [stopTypingFeedback]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -28,6 +108,59 @@ const MessageInput = () => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleTextChange = (e) => {
+    const nextText = e.target.value;
+    const targetUserId = selectedUser?._id;
+    const senderName = authUser?.fullName;
+
+    setText(nextText);
+
+    if (!targetUserId || !senderName) return;
+
+    if (!nextText.trim()) {
+      stopTypingSession(targetUserId);
+      return;
+    }
+
+    const now = Date.now();
+
+    if (!typingStartedAtRef.current) {
+      typingStartedAtRef.current = now;
+    }
+
+    if (lastTypedAtRef.current) {
+      const nextInterval = now - lastTypedAtRef.current;
+      typingIntervalsRef.current = [
+        ...typingIntervalsRef.current.slice(-(MAX_TYPING_INTERVALS - 1)),
+        nextInterval,
+      ];
+    }
+
+    lastTypedAtRef.current = now;
+
+    const hasLockedFeedback = Boolean(lockedFeedbackRef.current);
+    const nextFeedback =
+      lockedFeedbackRef.current ||
+      getTypingFeedback(senderName, typingIntervalsRef.current);
+
+    if (
+      !hasLockedFeedback &&
+      now - typingStartedAtRef.current >= TYPING_ANALYSIS_WINDOW
+    ) {
+      lockedFeedbackRef.current = nextFeedback;
+    }
+
+    sendTypingFeedback(targetUserId, nextFeedback);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      stopTypingSession(targetUserId);
+    }, TYPING_IDLE_DELAY);
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!text.trim() && !imagePreview) return;
@@ -38,7 +171,7 @@ const MessageInput = () => {
         image: imagePreview,
       });
 
-      // Clear form
+      stopTypingSession(selectedUser?._id);
       setText("");
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -76,7 +209,8 @@ const MessageInput = () => {
             className="w-full input input-bordered rounded-lg input-sm sm:input-md"
             placeholder="Type a message..."
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={handleTextChange}
+            onBlur={() => stopTypingSession(selectedUser?._id)}
           />
           <input
             type="file"

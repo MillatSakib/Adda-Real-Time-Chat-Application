@@ -38,6 +38,8 @@ io.on("connection", (socket) => {
     userSocketMap[userId] = socket.id;
   }
 
+  socket.data.activeViewedUserId = null;
+
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
   socket.on("call:offer", ({ to, offer, caller }) => {
@@ -84,7 +86,54 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("typing:update", ({ to, feedback, isTyping }) => {
+    emitToUser(to, "typing:update", {
+      from: userId,
+      feedback,
+      isTyping: Boolean(isTyping),
+    });
+  });
+
+  socket.on("chat:view", ({ to, feedback, isViewing }) => {
+    const previousViewedUserId = socket.data.activeViewedUserId;
+
+    if ((!isViewing || !to) && previousViewedUserId) {
+      emitToUser(previousViewedUserId, "chat:view", {
+        from: userId,
+        isViewing: false,
+      });
+      socket.data.activeViewedUserId = null;
+      return;
+    }
+
+    if (!isViewing || !to) return;
+
+    if (previousViewedUserId && previousViewedUserId !== to) {
+      emitToUser(previousViewedUserId, "chat:view", {
+        from: userId,
+        isViewing: false,
+      });
+    }
+
+    socket.data.activeViewedUserId = to;
+
+    emitToUser(to, "chat:view", {
+      from: userId,
+      feedback,
+      isViewing: true,
+    });
+  });
+
   socket.on("disconnect", () => {
+    const viewedUserId = socket.data.activeViewedUserId;
+
+    if (viewedUserId) {
+      emitToUser(viewedUserId, "chat:view", {
+        from: userId,
+        isViewing: false,
+      });
+    }
+
     if (userId) {
       delete userSocketMap[userId];
     }
