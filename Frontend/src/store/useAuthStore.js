@@ -17,8 +17,10 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.get("/auth/check");
       set({ authUser: res.data.user, isCheckingAuth: false });
+      get().connectSocket();
     } catch (err) {
       set({ authUser: null, isCheckingAuth: false });
+      get().disconnectSocket();
     }
   },
   signup: async (formData) => {
@@ -26,6 +28,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.post("/auth/signup", formData);
       set({ authUser: res.data.user || res.data, isSigningUp: false });
+      get().connectSocket();
     } catch (err) {
       set({ isSigningUp: false });
       throw new Error(err.response?.data?.message || "Failed to create account");
@@ -36,6 +39,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.post("/auth/signin", formData);
       set({ authUser: res.data.user || res.data, isLoggingIn: false });
+      get().connectSocket();
     } catch (err) {
       set({ isLoggingIn: false });
       throw new Error(err.response?.data?.message || "Failed to login");

@@ -1,5 +1,7 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
+import cloudinary from "../lib/cloudinary.js";
+import { getReceiverSocketId, io } from "../lib/socket.js";
 
 export const getMessageList = async (req, res) => {
   try {
@@ -7,11 +9,7 @@ export const getMessageList = async (req, res) => {
     const filteredUsers = await User.find({
       _id: { $ne: loggedInUserId },
     }).select("-password");
-    res.status(200).json({
-      success: true,
-      message: "Message list fetched successfully",
-      data: filteredUsers,
-    });
+    res.status(200).json(filteredUsers);
   } catch (error) {
     console.log("Error in getMessageList controller:", error.message);
     res.status(500).json({
@@ -31,13 +29,9 @@ export const getAllMessages = async (req, res) => {
         { senderId: senderId, receiverId: userToChatId },
         { senderId: userToChatId, receiverId: senderId },
       ],
-    });
+    }).sort({ createdAt: 1 });
 
-    res.status(200).json({
-      success: true,
-      message: "Messages fetched successfully",
-      data: message,
-    });
+    res.status(200).json(message);
   } catch (error) {
     console.log("Error in getAllMessages controller:", error.message);
     res.status(500).json({
@@ -45,36 +39,35 @@ export const getAllMessages = async (req, res) => {
       message: "Server error in fetching messages",
     });
   }
-  res.send(`This is all message: ${req.params.id}`);
 };
 
 export const sendMessage = async (req, res) => {
   try {
     const { text, image } = req.body;
-    const reciverId = req.params.id;
+    const receiverId = req.params.id;
     const senderId = req.user._id;
-    let imageurl;
+    let imageUrl = "";
+
     if (image) {
-      //Upload base64 image to cloudinary
       const uploadResponse = await cloudinary.uploader.upload(image);
-      imageurl = uploadResponse.secure_url;
+      imageUrl = uploadResponse.secure_url;
     }
+
     const newMessage = new Message({
       senderId,
-      receiverId: reciverId,
+      receiverId,
       text,
-      image: imageurl,
+      image: imageUrl,
     });
 
     await newMessage.save();
 
-    //real time functionality should be implemented here using socket.io or any other real time library
+    const receiverSocketId = getReceiverSocketId(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("newMessage", newMessage);
+    }
 
-    res.status(200).json({
-      success: true,
-      message: "Message sent successfully",
-      data: newMessage,
-    });
+    res.status(201).json(newMessage);
   } catch (error) {
     console.log("Error in sendMessage controller:", error.message);
     res.status(500).json({
