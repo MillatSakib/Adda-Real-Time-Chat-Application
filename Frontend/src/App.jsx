@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import { useAuthStore } from "./store/useAuthStore";
+import { useThemeStore } from "./store/useThemeStore";
 import { useEffect } from "react";
 import { Loader } from "lucide-react";
 import Footer from "./pages/Footer";
@@ -14,22 +15,33 @@ import { Toaster } from "react-hot-toast";
 
 function App() {
   const { authUser, checkAuth, isCheckingAuth } = useAuthStore();
+  const theme = useThemeStore((state) => state.theme);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
   if (isCheckingAuth && !authUser) {
     console.log("Spinner block execute");
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div
+        data-theme={theme}
+        className="flex h-screen items-center justify-center bg-base-200 text-base-content"
+      >
         <Loader className="size-10 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div>
+    <div
+      data-theme={theme}
+      className="min-h-screen bg-base-200 text-base-content transition-colors duration-300"
+    >
       <Navbar />
       <Routes>
         <Route

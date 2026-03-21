@@ -1,23 +1,13 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
+import { useThemeStore } from "../store/useThemeStore";
 
 export default function Navbar() {
   const navigate = useNavigate();
   const authUser = useAuthStore((state) => state.authUser);
   const logout = useAuthStore((state) => state.logout);
-  const [theme, setTheme] = useState(() => {
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme === "light" || savedTheme === "dark") return savedTheme;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
+  const { theme, setTheme } = useThemeStore();
 
   const handleThemeToggle = (event) => {
     setTheme(event.target.checked ? "dark" : "light");
@@ -32,7 +22,9 @@ export default function Navbar() {
     <div>
       <div className="navbar bg-base-100 shadow-sm">
         <div className="flex-1">
-          <a className="btn btn-ghost text-xl">aDDa</a>
+          <NavLink to="/" className="btn btn-ghost text-xl">
+            aDDa
+          </NavLink>
         </div>
         <div className="flex-none">
           <label className="swap swap-rotate">
@@ -80,13 +72,12 @@ export default function Navbar() {
                 className="menu menu-sm dropdown-content bg-base-100 rounded-box z-1 mt-3 w-52 p-2 shadow"
               >
                 <li>
-                  <a className="justify-between">
+                  <NavLink to="/profile" className="justify-between">
                     Profile
-                    <span className="badge">New</span>
-                  </a>
+                  </NavLink>
                 </li>
                 <li>
-                  <a>Settings</a>
+                  <NavLink to="/settings">Settings</NavLink>
                 </li>
                 <li>
                   <a onClick={handleLogout}>Logout</a>
