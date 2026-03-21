@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import authRoutes from "./routes/auth.route.js";
 import cookieParser from "cookie-parser";
@@ -5,11 +6,15 @@ import messageRoutes from "./routes/message.route.js";
 import cors from "cors";
 import { app } from "./lib/socket.js";
 
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://app-hp.millatsakib.com",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 app.use(
   cors({
-    origin: FRONTEND_URL,
+    origin: allowedOrigins,
     credentials: true,
   }),
 );

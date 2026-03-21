@@ -1,0 +1,49 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: chatty-mongodb
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: chatty-backend
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    env_file:
+      - ./Backend/.env
+    environment:
+      PORT: 5005
+      MONGODB_URL: ${MONGODB_URL:-mongodb://mongodb:27017/adda}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+    ports:
+      - "${BACKEND_PORT:-5005}:5005"
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: chatty-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_SERVER_URL: ${VITE_SERVER_URL:-http://localhost:5005}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+
+volumes:
+  mongo_data:

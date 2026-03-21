@@ -7,15 +7,24 @@ import LoginPage from "./pages/LoginPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import { useAuthStore } from "./store/useAuthStore";
+import { useCallStore } from "./store/useCallStore";
 import { useThemeStore } from "./store/useThemeStore";
 import { useEffect } from "react";
 import { Loader } from "lucide-react";
 import Footer from "./pages/Footer";
 import { Toaster } from "react-hot-toast";
+import CallInterface from "./components/CallInterface";
 
 function App() {
-  const { authUser, checkAuth, isCheckingAuth } = useAuthStore();
+  const { authUser, checkAuth, isCheckingAuth, socket } = useAuthStore();
   const theme = useThemeStore((state) => state.theme);
+  const initializeCallHandlers = useCallStore(
+    (state) => state.initializeCallHandlers,
+  );
+  const cleanupCallHandlers = useCallStore(
+    (state) => state.cleanupCallHandlers,
+  );
+  const endCall = useCallStore((state) => state.endCall);
 
   useEffect(() => {
     checkAuth();
@@ -24,6 +33,20 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+
+    initializeCallHandlers(socket);
+
+    return () => cleanupCallHandlers(socket);
+  }, [socket, initializeCallHandlers, cleanupCallHandlers]);
+
+  useEffect(() => {
+    if (!socket) {
+      endCall(false);
+    }
+  }, [socket, endCall]);
 
   if (isCheckingAuth && !authUser) {
     console.log("Spinner block execute");
@@ -66,6 +89,7 @@ function App() {
         />
       </Routes>
       {!authUser && <Footer />}
+      <CallInterface />
       <Toaster />
     </div>
   );

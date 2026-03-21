@@ -1,10 +1,18 @@
-import { X } from "lucide-react";
+import { Phone, Video, X } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
+import { canUseCalling, useCallStore } from "../store/useCallStore";
 
 const ChatHeader = () => {
   const { selectedUser, setSelectedUser } = useChatStore();
   const { onlineUsers } = useAuthStore();
+  const startCall = useCallStore((state) => state.startCall);
+  const isUserOnline = onlineUsers.includes(selectedUser._id);
+  const callTitle = !isUserOnline
+    ? "User is offline"
+    : !canUseCalling()
+      ? "Calling requires HTTPS or localhost"
+      : "Start a call";
 
   return (
     <div className="p-2.5 border-b border-base-300">
@@ -29,10 +37,27 @@ const ChatHeader = () => {
           </div>
         </div>
 
-        {/* Close button */}
-        <button onClick={() => setSelectedUser(null)}>
-          <X />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn btn-sm btn-circle"
+            onClick={() => startCall(selectedUser, "audio")}
+            disabled={!isUserOnline}
+            title={callTitle}
+          >
+            <Phone className="size-4" />
+          </button>
+          <button
+            className="btn btn-sm btn-circle"
+            onClick={() => startCall(selectedUser, "video")}
+            disabled={!isUserOnline}
+            title={callTitle}
+          >
+            <Video className="size-4" />
+          </button>
+          <button className="btn btn-sm btn-ghost btn-circle" onClick={() => setSelectedUser(null)}>
+            <X />
+          </button>
+        </div>
       </div>
     </div>
   );
