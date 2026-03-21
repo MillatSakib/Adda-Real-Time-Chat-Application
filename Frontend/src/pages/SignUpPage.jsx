@@ -2,8 +2,10 @@ import React, { useState } from "react";
 import { NavLink } from "react-router-dom";
 import toast, { Toaster } from "react-hot-toast";
 import { useAuthStore } from "../store/useAuthStore";
+import { useNavigate } from "react-router-dom";
 
 export default function SignUpPage() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -20,13 +22,13 @@ export default function SignUpPage() {
   };
 
   const handleSubmit = async (e) => {
-    console.log("Hello");
     e.preventDefault();
     const validationError = validateForm();
     if (validationError) return toast.error(validationError.message);
     try {
       await signup(formData);
       toast.success("Account created successfully!");
+      navigate("/");
     } catch (error) {
       toast.error(error.message || "Failed to create account");
     }
@@ -48,7 +50,9 @@ export default function SignUpPage() {
               <input
                 type="text"
                 value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, fullName: e.target.value })
+                }
                 className="input"
                 placeholder="Your name"
               />
@@ -56,7 +60,9 @@ export default function SignUpPage() {
               <input
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
                 className="input"
                 placeholder="Email"
               />
@@ -64,7 +70,9 @@ export default function SignUpPage() {
               <input
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 className="input"
                 placeholder="Create password"
               />

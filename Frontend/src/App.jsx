@@ -10,6 +10,7 @@ import { useAuthStore } from "./store/useAuthStore";
 import { useEffect } from "react";
 import { Loader } from "lucide-react";
 import Footer from "./pages/Footer";
+import { Toaster } from "react-hot-toast";
 
 function App() {
   const { authUser, checkAuth, isCheckingAuth } = useAuthStore();
@@ -17,8 +18,6 @@ function App() {
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
-
-  console.log({ authUser });
 
   if (isCheckingAuth && !authUser) {
     console.log("Spinner block execute");
@@ -55,6 +54,7 @@ function App() {
         />
       </Routes>
       {!authUser && <Footer />}
+      <Toaster />
     </div>
   );
 }

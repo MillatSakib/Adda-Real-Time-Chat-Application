@@ -2,8 +2,10 @@ import React, { useState } from "react";
 import { NavLink } from "react-router-dom";
 import toast, { Toaster } from "react-hot-toast";
 import { useAuthStore } from "../store/useAuthStore";
+import { useNavigate } from "react-router-dom";
 
 export default function LoginPage() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -26,6 +28,7 @@ export default function LoginPage() {
     try {
       await login(formData);
       toast.success("Logged in successfully!");
+      navigate("/");
     } catch (error) {
       toast.error(error.message || "Failed to login");
     }
@@ -84,7 +87,7 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-      <Toaster />
+      
     </div>
   );
 }
