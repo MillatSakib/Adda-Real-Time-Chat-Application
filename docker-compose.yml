@@ -30,7 +30,6 @@ services:
     environment:
       PORT: 5005
       MONGODB_URL: mongodb://mongodb:27017/adda
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     networks:
       - app-network
     ports:
@@ -44,8 +43,8 @@ services:
     restart: always
     depends_on:
       - backend
-    environment:
-      VITE_SERVER_URL: ${VITE_SERVER_URL:-http://localhost:5005}
+    env_file:
+      - ./Frontend/.env
     networks:
       - app-network
     ports:
