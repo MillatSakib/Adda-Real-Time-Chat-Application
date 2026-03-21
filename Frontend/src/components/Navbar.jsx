@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { useThemeStore } from "../store/useThemeStore";
+import defaultProfile from "../assets/avatar.webp";
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -63,7 +64,7 @@ export default function Navbar() {
                 <div className="w-10 rounded-full">
                   <img
                     alt="User profile"
-                    src="https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp"
+                    src={authUser?.profilePicture || defaultProfile}
                   />
                 </div>
               </div>

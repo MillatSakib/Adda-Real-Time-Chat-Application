@@ -1,12 +1,18 @@
 import { create } from "zustand";
 import { axiosInstance } from "../lib/axios";
+import { io } from "socket.io-client";
+import toast from "react-hot-toast";
 
-export const useAuthStore = create((set) => ({
+const BASE_URL = axiosInstance.defaults.baseURL?.replace(/\/api\/?$/, "") || "";
+
+export const useAuthStore = create((set, get) => ({
   authUser: null,
   isSigningUp: false,
   isLoggingIn: false,
-  isUpdsatingProfile: false,
+  isUpdatingProfile: false,
   isCheckingAuth: true,
+  socket: null,
+  onlineUsers: [],
   checkAuth: async () => {
     try {
       const res = await axiosInstance.get("/auth/check");
@@ -38,9 +44,47 @@ export const useAuthStore = create((set) => ({
   logout: async () => {
     try {
       await axiosInstance.post("/auth/logout");
-      set({ authUser: null });
+      get().disconnectSocket();
+      set({ authUser: null, onlineUsers: [] });
     } catch (err) {
       console.error("Logout failed:", err);
     }
+  },
+
+  updateProfile: async (data) => {
+    set({ isUpdatingProfile: true });
+    try {
+      const res = await axiosInstance.put("/auth/update-profile", data);
+      set({ authUser: res.data.user || res.data });
+      toast.success("Profile updated successfully");
+    } catch (error) {
+      console.log("error in update profile:", error);
+      toast.error(error.response?.data?.message || "Failed to update profile");
+    } finally {
+      set({ isUpdatingProfile: false });
+    }
+  },
+
+  connectSocket: () => {
+    const { authUser } = get();
+    if (!authUser || get().socket?.connected) return;
+
+    const socket = io(BASE_URL, {
+      query: {
+        userId: authUser._id,
+      },
+    });
+    socket.connect();
+
+    set({ socket: socket });
+
+    socket.on("getOnlineUsers", (userIds) => {
+      set({ onlineUsers: userIds });
+    });
+  },
+  disconnectSocket: () => {
+    const socket = get().socket;
+    if (socket?.connected) socket.disconnect();
+    set({ socket: null });
   },
 }));
