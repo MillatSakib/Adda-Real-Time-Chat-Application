@@ -6,6 +6,30 @@ import { playMessageNotificationSound } from "../lib/sound";
 
 let typingFeedbackTimeout = null;
 
+const buildUnreadCounts = (users) =>
+  users.reduce((counts, user) => {
+    counts[String(user._id)] = user.unreadCount || 0;
+    return counts;
+  }, {});
+
+const clearUnreadCountForUser = (unreadCounts, userId) => {
+  if (!userId) return unreadCounts;
+
+  return {
+    ...unreadCounts,
+    [String(userId)]: 0,
+  };
+};
+
+const incrementUnreadCountForUser = (unreadCounts, userId) => {
+  const key = String(userId);
+
+  return {
+    ...unreadCounts,
+    [key]: (unreadCounts[key] || 0) + 1,
+  };
+};
+
 const clearTypingFeedbackTimeout = () => {
   if (typingFeedbackTimeout) {
     clearTimeout(typingFeedbackTimeout);
@@ -16,29 +40,40 @@ const clearTypingFeedbackTimeout = () => {
 const handleIncomingMessage = (newMessage, set, get) => {
   const activeUser = get().selectedUser;
   const authUserId = useAuthStore.getState().authUser?._id;
+  const senderId = String(newMessage.senderId);
   const isIncomingMessage =
     authUserId &&
     String(newMessage.receiverId) === String(authUserId) &&
-    String(newMessage.senderId) !== String(authUserId);
+    senderId !== String(authUserId);
 
   if (isIncomingMessage) {
     playMessageNotificationSound();
   }
 
-  if (!activeUser || String(newMessage.senderId) !== String(activeUser._id)) {
+  if (!isIncomingMessage) {
     return;
   }
 
-  clearTypingFeedbackTimeout();
-  set({
-    messages: [...get().messages, newMessage],
-    typingFeedback: null,
-  });
+  if (activeUser && senderId === String(activeUser._id)) {
+    clearTypingFeedbackTimeout();
+    set((state) => ({
+      messages: [...state.messages, newMessage],
+      typingFeedback: null,
+      unreadCounts: clearUnreadCountForUser(state.unreadCounts, senderId),
+    }));
+    get().markMessagesAsRead(senderId);
+    return;
+  }
+
+  set((state) => ({
+    unreadCounts: incrementUnreadCountForUser(state.unreadCounts, senderId),
+  }));
 };
 
 export const useChatStore = create((set, get) => ({
   messages: [],
   users: [],
+  unreadCounts: {},
   selectedUser: null,
   typingFeedback: null,
   viewerFeedback: null,
@@ -49,7 +84,10 @@ export const useChatStore = create((set, get) => ({
     set({ isUsersLoading: true });
     try {
       const res = await axiosInstance.get("/messages/users");
-      set({ users: res.data });
+      set({
+        users: res.data,
+        unreadCounts: buildUnreadCounts(res.data),
+      });
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to load users");
     } finally {
@@ -66,7 +104,10 @@ export const useChatStore = create((set, get) => ({
     });
     try {
       const res = await axiosInstance.get(`/messages/${userId}`);
-      set({ messages: res.data });
+      set((state) => ({
+        messages: res.data,
+        unreadCounts: clearUnreadCountForUser(state.unreadCounts, userId),
+      }));
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to load messages");
     } finally {
@@ -91,6 +132,20 @@ export const useChatStore = create((set, get) => ({
         error.response?.data?.message || "Failed to send message";
       toast.error(message);
       throw new Error(message);
+    }
+  },
+
+  markMessagesAsRead: async (userId) => {
+    if (!userId) return;
+
+    set((state) => ({
+      unreadCounts: clearUnreadCountForUser(state.unreadCounts, userId),
+    }));
+
+    try {
+      await axiosInstance.patch(`/messages/read/${userId}`);
+    } catch (error) {
+      console.error("Failed to mark messages as read:", error);
     }
   },
 
@@ -188,10 +243,14 @@ export const useChatStore = create((set, get) => ({
 
   setSelectedUser: (selectedUser) => {
     clearTypingFeedbackTimeout();
-    set({
+    set((state) => ({
       selectedUser,
       typingFeedback: null,
       viewerFeedback: null,
-    });
+      unreadCounts: clearUnreadCountForUser(
+        state.unreadCounts,
+        selectedUser?._id,
+      ),
+    }));
   },
 }));
