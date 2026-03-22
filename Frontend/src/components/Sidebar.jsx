@@ -28,7 +28,7 @@ const Sidebar = () => {
   if (isUsersLoading) return <SidebarSkeleton />;
 
   return (
-    <aside className="h-full w-20 lg:w-72 border-r border-base-300 flex flex-col transition-all duration-200">
+    <aside className="flex h-full min-h-0 w-20 flex-col border-r border-base-300 transition-all duration-200 lg:w-72">
       <div className="border-b border-base-300 w-full p-5">
         <div className="flex items-center gap-2">
           <Users className="size-6" />
@@ -49,7 +49,7 @@ const Sidebar = () => {
         </div>
       </div>
 
-      <div className="overflow-y-auto w-full py-3">
+      <div className="min-h-0 w-full overflow-y-auto py-3">
         {filteredUsers.map((user) => (
           <button
             key={user._id}
