@@ -2,6 +2,7 @@ import { create } from "zustand";
 import toast from "react-hot-toast";
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
+import { playMessageNotificationSound } from "../lib/sound";
 
 let typingFeedbackTimeout = null;
 
@@ -10,6 +11,29 @@ const clearTypingFeedbackTimeout = () => {
     clearTimeout(typingFeedbackTimeout);
     typingFeedbackTimeout = null;
   }
+};
+
+const handleIncomingMessage = (newMessage, set, get) => {
+  const activeUser = get().selectedUser;
+  const authUserId = useAuthStore.getState().authUser?._id;
+  const isIncomingMessage =
+    authUserId &&
+    String(newMessage.receiverId) === String(authUserId) &&
+    String(newMessage.senderId) !== String(authUserId);
+
+  if (isIncomingMessage) {
+    playMessageNotificationSound();
+  }
+
+  if (!activeUser || String(newMessage.senderId) !== String(activeUser._id)) {
+    return;
+  }
+
+  clearTypingFeedbackTimeout();
+  set({
+    messages: [...get().messages, newMessage],
+    typingFeedback: null,
+  });
 };
 
 export const useChatStore = create((set, get) => ({
@@ -70,11 +94,7 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  subscribeToMessages: () => {
-    const { selectedUser } = get();
-    if (!selectedUser) return;
-
-    const socket = useAuthStore.getState().socket;
+  initializeMessageHandlers: (socket) => {
     if (!socket) return;
 
     socket.off("newMessage");
@@ -82,15 +102,7 @@ export const useChatStore = create((set, get) => ({
     socket.off("chat:view");
 
     socket.on("newMessage", (newMessage) => {
-      const isMessageSentFromSelectedUser =
-        String(newMessage.senderId) === String(selectedUser._id);
-      if (!isMessageSentFromSelectedUser) return;
-
-      clearTypingFeedbackTimeout();
-      set({
-        messages: [...get().messages, newMessage],
-        typingFeedback: null,
-      });
+      handleIncomingMessage(newMessage, set, get);
     });
 
     socket.on("typing:update", ({ from, feedback, isTyping }) => {
@@ -164,11 +176,9 @@ export const useChatStore = create((set, get) => ({
     });
   },
 
-  unsubscribeFromMessages: () => {
+  cleanupMessageHandlers: (socket) => {
     clearTypingFeedbackTimeout();
     set({ typingFeedback: null, viewerFeedback: null });
-
-    const socket = useAuthStore.getState().socket;
     if (!socket) return;
 
     socket.off("newMessage");

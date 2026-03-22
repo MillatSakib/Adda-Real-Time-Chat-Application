@@ -1,8 +1,14 @@
 import { create } from "zustand";
 import toast from "react-hot-toast";
 import { useAuthStore } from "./useAuthStore";
+import {
+  playIncomingCallSound,
+  playOutgoingCallSound,
+  stopCallSounds,
+} from "../lib/sound";
 
 const MEDIA_PERMISSION_TOAST_ID = "call-secure-context";
+const CALL_RING_TIMEOUT_MS = 27_000;
 
 const rtcConfig = {
   iceServers: [
@@ -14,6 +20,20 @@ const rtcConfig = {
 const stopStream = (stream) => {
   stream?.getTracks().forEach((track) => track.stop());
 };
+
+let outgoingCallTimeout = null;
+
+const clearOutgoingCallTimeout = () => {
+  if (outgoingCallTimeout) {
+    clearTimeout(outgoingCallTimeout);
+    outgoingCallTimeout = null;
+  }
+};
+
+const hasActiveCallState = (state) =>
+  Boolean(
+    state.incomingCall || state.activeCall || state.callStatus !== "idle",
+  );
 
 export const canUseCalling = () =>
   typeof window !== "undefined" &&
@@ -47,7 +67,11 @@ export const useCallStore = create((set, get) => ({
     socket.off("call:unavailable");
 
     socket.on("call:offer", ({ from, caller, offer }) => {
-      if (get().incomingCall || get().activeCall || get().callStatus !== "idle") {
+      if (
+        get().incomingCall ||
+        get().activeCall ||
+        get().callStatus !== "idle"
+      ) {
         socket.emit("call:busy", { to: from });
         return;
       }
@@ -56,6 +80,7 @@ export const useCallStore = create((set, get) => ({
         incomingCall: { from, caller, offer },
         callStatus: "ringing",
       });
+      playIncomingCallSound();
       toast(`${caller.fullName} is calling...`);
     });
 
@@ -68,6 +93,8 @@ export const useCallStore = create((set, get) => ({
           new RTCSessionDescription(answer),
         );
         await get().flushPendingCandidates();
+        clearOutgoingCallTimeout();
+        stopCallSounds();
         set({ callStatus: "connecting" });
       } catch (error) {
         console.error("Failed to handle call answer:", error);
@@ -94,21 +121,29 @@ export const useCallStore = create((set, get) => ({
     });
 
     socket.on("call:end", () => {
+      if (!hasActiveCallState(get())) return;
+
       toast("Call ended");
       get().endCall(false);
     });
 
     socket.on("call:decline", () => {
+      if (!hasActiveCallState(get())) return;
+
       toast.error("Call declined");
       get().endCall(false);
     });
 
     socket.on("call:busy", () => {
+      if (!hasActiveCallState(get())) return;
+
       toast.error("User is busy on another call");
       get().endCall(false);
     });
 
     socket.on("call:unavailable", () => {
+      if (!hasActiveCallState(get())) return;
+
       toast.error("User is unavailable for a call");
       get().endCall(false);
     });
@@ -256,6 +291,17 @@ export const useCallStore = create((set, get) => ({
           profilePicture: authUser.profilePicture,
         },
       });
+
+      playOutgoingCallSound();
+      clearOutgoingCallTimeout();
+      outgoingCallTimeout = setTimeout(() => {
+        const { callStatus, activeCall } = get();
+
+        if (callStatus === "calling" && activeCall?.user?._id === user._id) {
+          toast.error("No answer. Call ended.");
+          get().endCall(true);
+        }
+      }, CALL_RING_TIMEOUT_MS);
     } catch (error) {
       console.error("Failed to start call:", error);
       toast.error(error.message || "Could not start the call", {
@@ -272,6 +318,8 @@ export const useCallStore = create((set, get) => ({
     if (!socket || !incomingCall) return;
 
     try {
+      stopCallSounds();
+
       await get().prepareLocalStream();
 
       set({
@@ -312,6 +360,8 @@ export const useCallStore = create((set, get) => ({
       socket.emit("call:decline", { to: incomingCall.from });
     }
 
+    clearOutgoingCallTimeout();
+    stopCallSounds();
     set({ ...initialState });
   },
 
@@ -321,14 +371,15 @@ export const useCallStore = create((set, get) => ({
     const incomingCall = get().incomingCall;
 
     if (notifyPeer && socket) {
-      const targetUserId =
-        activeCall?.user?._id || incomingCall?.from || null;
+      const targetUserId = activeCall?.user?._id || incomingCall?.from || null;
 
       if (targetUserId) {
         socket.emit("call:end", { to: targetUserId });
       }
     }
 
+    clearOutgoingCallTimeout();
+    stopCallSounds();
     get().peerConnection?.close();
     stopStream(get().localStream);
     stopStream(get().remoteStream);

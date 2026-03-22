@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { Image, Send, X } from "lucide-react";
 import toast from "react-hot-toast";
@@ -50,7 +50,7 @@ const MessageInput = () => {
     useChatStore();
   const authUser = useAuthStore((state) => state.authUser);
 
-  const resetTypingSession = () => {
+  const resetTypingSession = useCallback(() => {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
@@ -60,15 +60,15 @@ const MessageInput = () => {
     typingStartedAtRef.current = null;
     typingIntervalsRef.current = [];
     lockedFeedbackRef.current = null;
-  };
+  }, []);
 
-  const stopTypingSession = (targetUserId) => {
+  const stopTypingSession = useCallback((targetUserId) => {
     if (targetUserId) {
       stopTypingFeedback(targetUserId);
     }
 
     resetTypingSession();
-  };
+  }, [resetTypingSession, stopTypingFeedback]);
 
   useEffect(() => {
     const previousSelectedUserId = previousSelectedUserIdRef.current;
@@ -81,13 +81,13 @@ const MessageInput = () => {
     }
 
     previousSelectedUserIdRef.current = selectedUser?._id || null;
-  }, [selectedUser?._id, stopTypingFeedback]);
+  }, [selectedUser?._id, stopTypingSession]);
 
   useEffect(() => {
     return () => {
       stopTypingSession(previousSelectedUserIdRef.current);
     };
-  }, [stopTypingFeedback]);
+  }, [stopTypingSession]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];

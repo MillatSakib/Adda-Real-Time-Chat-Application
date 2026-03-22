@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import { useAuthStore } from "./store/useAuthStore";
+import { useChatStore } from "./store/useChatStore";
 import { useCallStore } from "./store/useCallStore";
 import { useThemeStore } from "./store/useThemeStore";
 import { useEffect } from "react";
@@ -14,6 +15,7 @@ import { Loader } from "lucide-react";
 import Footer from "./pages/Footer";
 import { Toaster } from "react-hot-toast";
 import CallInterface from "./components/CallInterface";
+import { warmupSoundEffects } from "./lib/sound";
 
 function App() {
   const { authUser, checkAuth, isCheckingAuth, socket } = useAuthStore();
@@ -25,6 +27,12 @@ function App() {
     (state) => state.cleanupCallHandlers,
   );
   const endCall = useCallStore((state) => state.endCall);
+  const initializeMessageHandlers = useChatStore(
+    (state) => state.initializeMessageHandlers,
+  );
+  const cleanupMessageHandlers = useChatStore(
+    (state) => state.cleanupMessageHandlers,
+  );
 
   useEffect(() => {
     checkAuth();
@@ -35,12 +43,24 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
+    warmupSoundEffects();
+  }, []);
+
+  useEffect(() => {
     if (!socket) return undefined;
 
     initializeCallHandlers(socket);
 
     return () => cleanupCallHandlers(socket);
   }, [socket, initializeCallHandlers, cleanupCallHandlers]);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+
+    initializeMessageHandlers(socket);
+
+    return () => cleanupMessageHandlers(socket);
+  }, [socket, initializeMessageHandlers, cleanupMessageHandlers]);
 
   useEffect(() => {
     if (!socket) {

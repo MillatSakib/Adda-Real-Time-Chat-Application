@@ -17,8 +17,6 @@ const ChatContainer = () => {
     viewerFeedback,
     sendViewerFeedback,
     stopViewerFeedback,
-    subscribeToMessages,
-    unsubscribeFromMessages,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
@@ -27,8 +25,6 @@ const ChatContainer = () => {
   useEffect(() => {
     getMessages(selectedUser._id);
 
-    subscribeToMessages();
-
     sendViewerFeedback(
       selectedUser._id,
       `${viewerName} is looking at your messages like a cat.`,
@@ -36,7 +32,6 @@ const ChatContainer = () => {
 
     return () => {
       stopViewerFeedback(selectedUser._id);
-      unsubscribeFromMessages();
     };
   }, [
     viewerName,
@@ -44,8 +39,6 @@ const ChatContainer = () => {
     getMessages,
     sendViewerFeedback,
     stopViewerFeedback,
-    subscribeToMessages,
-    unsubscribeFromMessages,
   ]);
 
   useEffect(() => {
