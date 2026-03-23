@@ -18,7 +18,15 @@ import CallInterface from "./components/CallInterface";
 import { warmupSoundEffects } from "./lib/sound";
 
 function App() {
-  const { authUser, checkAuth, isCheckingAuth, socket } = useAuthStore();
+  const {
+    authUser,
+    checkAuth,
+    isCheckingAuth,
+    isOffline,
+    socket,
+    handleBrowserOffline,
+    handleBrowserOnline,
+  } = useAuthStore();
   const theme = useThemeStore((state) => state.theme);
   const initializeCallHandlers = useCallStore(
     (state) => state.initializeCallHandlers,
@@ -45,6 +53,16 @@ function App() {
   useEffect(() => {
     warmupSoundEffects();
   }, []);
+
+  useEffect(() => {
+    window.addEventListener("offline", handleBrowserOffline);
+    window.addEventListener("online", handleBrowserOnline);
+
+    return () => {
+      window.removeEventListener("offline", handleBrowserOffline);
+      window.removeEventListener("online", handleBrowserOnline);
+    };
+  }, [handleBrowserOffline, handleBrowserOnline]);
 
   useEffect(() => {
     if (!socket) return undefined;
@@ -85,6 +103,11 @@ function App() {
       data-theme={theme}
       className="min-h-screen bg-base-200 text-base-content transition-colors duration-300"
     >
+      {isOffline && (
+        <div className="bg-warning px-4 py-2 text-center text-sm font-medium text-warning-content">
+          Network connection lost. Reconnecting...
+        </div>
+      )}
       <Navbar />
       <Routes>
         <Route

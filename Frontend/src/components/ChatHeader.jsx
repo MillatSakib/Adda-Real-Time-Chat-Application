@@ -5,10 +5,10 @@ import { canUseCalling, useCallStore } from "../store/useCallStore";
 
 const ChatHeader = () => {
   const { selectedUser, setSelectedUser } = useChatStore();
-  const { onlineUsers } = useAuthStore();
+  const isUserOnline = useAuthStore((state) => state.isUserOnline);
   const startCall = useCallStore((state) => state.startCall);
-  const isUserOnline = onlineUsers.includes(selectedUser._id);
-  const callTitle = !isUserOnline
+  const selectedUserOnline = isUserOnline(selectedUser._id);
+  const callTitle = !selectedUserOnline
     ? "User is offline"
     : !canUseCalling()
       ? "Calling requires HTTPS or localhost"
@@ -32,7 +32,7 @@ const ChatHeader = () => {
           <div>
             <h3 className="font-medium">{selectedUser.fullName}</h3>
             <p className="text-sm text-base-content/70">
-              {onlineUsers.includes(selectedUser._id) ? "Online" : "Offline"}
+              {selectedUserOnline ? "Online" : "Offline"}
             </p>
           </div>
         </div>
@@ -41,7 +41,7 @@ const ChatHeader = () => {
           <button
             className="btn btn-sm btn-circle"
             onClick={() => startCall(selectedUser)}
-            disabled={!isUserOnline}
+            disabled={!selectedUserOnline}
             title={callTitle}
           >
             <Phone className="size-4" />

@@ -1,12 +1,24 @@
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 
 WORKDIR /app
+
+ARG VITE_SERVER_URL=https://adda-backend.millatsakib.com
+ENV VITE_SERVER_URL=$VITE_SERVER_URL
 
 COPY package*.json ./
 RUN npm ci
 
 COPY . .
+RUN npm run build
 
-EXPOSE 5173
+FROM node:20-alpine AS production
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+WORKDIR /app
+
+RUN npm install -g serve@14.2.4
+
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 80
+
+CMD ["serve", "-s", "dist", "-l", "80"]

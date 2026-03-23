@@ -19,9 +19,66 @@ export const io = new Server(server, {
   },
 });
 
-const userSocketMap = {};
+const userSocketMap = new Map();
 
-export const getReceiverSocketId = (userId) => userSocketMap[userId];
+const normalizeUserId = (userId) => String(userId);
+const isSocketActive = (socketId) => io.sockets.sockets.has(socketId);
+
+const addUserSocket = (userId, socketId) => {
+  if (!userId || !socketId) return;
+
+  const normalizedUserId = normalizeUserId(userId);
+  const socketIds = userSocketMap.get(normalizedUserId) ?? new Set();
+  socketIds.add(socketId);
+  userSocketMap.set(normalizedUserId, socketIds);
+};
+
+const getUserSocketIds = (userId) => {
+  if (!userId) return [];
+
+  const normalizedUserId = normalizeUserId(userId);
+  const socketIds = userSocketMap.get(normalizedUserId);
+
+  if (!socketIds) return [];
+
+  for (const socketId of [...socketIds]) {
+    if (!isSocketActive(socketId)) {
+      socketIds.delete(socketId);
+    }
+  }
+
+  if (socketIds.size === 0) {
+    userSocketMap.delete(normalizedUserId);
+    return [];
+  }
+
+  return [...socketIds];
+};
+
+const removeUserSocket = (userId, socketId) => {
+  if (!userId || !socketId) return;
+
+  const normalizedUserId = normalizeUserId(userId);
+  const socketIds = userSocketMap.get(normalizedUserId);
+
+  if (!socketIds) return;
+
+  socketIds.delete(socketId);
+
+  if (socketIds.size === 0) {
+    userSocketMap.delete(normalizedUserId);
+  }
+};
+
+const getOnlineUserIds = () => {
+  for (const userId of [...userSocketMap.keys()]) {
+    getUserSocketIds(userId);
+  }
+
+  return [...userSocketMap.keys()];
+};
+
+export const getReceiverSocketId = (userId) => getUserSocketIds(userId).at(-1);
 const emitToUser = (userId, event, payload) => {
   const socketId = getReceiverSocketId(userId);
   if (socketId) {
@@ -35,12 +92,12 @@ io.on("connection", (socket) => {
   const userId = socket.handshake.query.userId;
 
   if (userId) {
-    userSocketMap[userId] = socket.id;
+    addUserSocket(userId, socket.id);
   }
 
   socket.data.activeViewedUserId = null;
 
-  io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  io.emit("getOnlineUsers", getOnlineUserIds());
 
   socket.on("call:offer", ({ to, offer, caller }) => {
     const delivered = emitToUser(to, "call:offer", {
@@ -134,10 +191,8 @@ io.on("connection", (socket) => {
       });
     }
 
-    if (userId) {
-      delete userSocketMap[userId];
-    }
+    removeUserSocket(userId, socket.id);
 
-    io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    io.emit("getOnlineUsers", getOnlineUserIds());
   });
 });

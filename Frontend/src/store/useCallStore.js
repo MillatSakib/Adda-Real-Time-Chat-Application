@@ -30,6 +30,9 @@ const clearOutgoingCallTimeout = () => {
   }
 };
 
+const connectionReadyStates = new Set(["connected", "completed"]);
+const connectionClosedStates = new Set(["failed", "disconnected", "closed"]);
+
 const hasActiveCallState = (state) =>
   Boolean(
     state.incomingCall || state.activeCall || state.callStatus !== "idle",
@@ -48,6 +51,7 @@ const initialState = {
   incomingCall: null,
   activeCall: null,
   callStatus: "idle",
+  callConnectedAt: null,
   pendingCandidates: [],
   isMuted: false,
 };
@@ -89,13 +93,17 @@ export const useCallStore = create((set, get) => ({
         const peerConnection = get().peerConnection;
         if (!peerConnection) return;
 
+        clearOutgoingCallTimeout();
+        stopCallSounds();
+        set((state) => ({
+          callStatus:
+            state.callStatus === "connected" ? "connected" : "connecting",
+        }));
+
         await peerConnection.setRemoteDescription(
           new RTCSessionDescription(answer),
         );
         await get().flushPendingCandidates();
-        clearOutgoingCallTimeout();
-        stopCallSounds();
-        set({ callStatus: "connecting" });
       } catch (error) {
         console.error("Failed to handle call answer:", error);
         toast.error("Failed to connect the call");
@@ -108,9 +116,9 @@ export const useCallStore = create((set, get) => ({
         const peerConnection = get().peerConnection;
 
         if (!peerConnection || !peerConnection.remoteDescription) {
-          set({
-            pendingCandidates: [...get().pendingCandidates, candidate],
-          });
+          set((state) => ({
+            pendingCandidates: [...state.pendingCandidates, candidate],
+          }));
           return;
         }
 
@@ -190,16 +198,43 @@ export const useCallStore = create((set, get) => ({
     const socket = useAuthStore.getState().socket;
     const peerConnection = new RTCPeerConnection(rtcConfig);
     const remoteStream = new MediaStream();
+    let callEndedFromStateChange = false;
+
+    const markCallConnected = () => {
+      set((state) => ({
+        remoteStream,
+        callStatus:
+          state.callStatus === "idle" ? state.callStatus : "connected",
+        callConnectedAt:
+          state.callStatus === "idle"
+            ? state.callConnectedAt
+            : state.callConnectedAt ?? Date.now(),
+      }));
+    };
+
+    const endCallFromStateChange = () => {
+      if (callEndedFromStateChange || !hasActiveCallState(get())) return;
+
+      callEndedFromStateChange = true;
+      get().endCall(false);
+    };
 
     peerConnection.ontrack = (event) => {
-      event.streams[0].getTracks().forEach((track) => {
-        remoteStream.addTrack(track);
+      const incomingTracks = event.streams[0]?.getTracks?.() || [event.track];
+
+      incomingTracks.forEach((track) => {
+        const hasTrack = remoteStream
+          .getTracks()
+          .some((existingTrack) => existingTrack.id === track.id);
+
+        if (!hasTrack) {
+          remoteStream.addTrack(track);
+        }
+
+        track.onunmute = markCallConnected;
       });
 
-      set({
-        remoteStream,
-        callStatus: "connected",
-      });
+      markCallConnected();
     };
 
     peerConnection.onicecandidate = (event) => {
@@ -212,16 +247,22 @@ export const useCallStore = create((set, get) => ({
     };
 
     peerConnection.onconnectionstatechange = () => {
-      if (peerConnection.connectionState === "connected") {
-        set({ callStatus: "connected" });
+      if (connectionReadyStates.has(peerConnection.connectionState)) {
+        markCallConnected();
       }
 
-      if (
-        ["failed", "disconnected", "closed"].includes(
-          peerConnection.connectionState,
-        )
-      ) {
-        get().endCall(false);
+      if (connectionClosedStates.has(peerConnection.connectionState)) {
+        endCallFromStateChange();
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      if (connectionReadyStates.has(peerConnection.iceConnectionState)) {
+        markCallConnected();
+      }
+
+      if (connectionClosedStates.has(peerConnection.iceConnectionState)) {
+        endCallFromStateChange();
       }
     };
 
@@ -232,7 +273,6 @@ export const useCallStore = create((set, get) => ({
 
     set({
       peerConnection,
-      remoteStream,
     });
 
     return peerConnection;
@@ -256,11 +296,20 @@ export const useCallStore = create((set, get) => ({
   },
 
   startCall: async (user) => {
-    const socket = useAuthStore.getState().socket;
-    const authUser = useAuthStore.getState().authUser;
+    const {
+      socket,
+      authUser,
+      isOffline,
+      isUserOnline,
+    } = useAuthStore.getState();
 
-    if (!socket || !authUser) {
+    if (!socket || !socket.connected || !authUser || isOffline) {
       toast.error("You must be connected to start a call");
+      return;
+    }
+
+    if (!user?._id || !isUserOnline(user._id)) {
+      toast.error("User is offline");
       return;
     }
 

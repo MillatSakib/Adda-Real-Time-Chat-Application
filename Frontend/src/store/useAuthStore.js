@@ -4,21 +4,40 @@ import { io } from "socket.io-client";
 import toast from "react-hot-toast";
 import { SERVER_URL } from "../lib/config";
 
+const isBrowser = typeof window !== "undefined";
+
+const isNetworkError = (error) =>
+  !error?.response &&
+  (error?.code === "ERR_NETWORK" ||
+    error?.message === "Network Error" ||
+    (isBrowser && navigator.onLine === false));
+
 export const useAuthStore = create((set, get) => ({
   authUser: null,
   isSigningUp: false,
   isLoggingIn: false,
   isUpdatingProfile: false,
   isCheckingAuth: true,
+  isOffline: isBrowser ? !navigator.onLine : false,
   socket: null,
   onlineUsers: [],
+  isUserOnline: (userId) => get().onlineUsers.includes(String(userId)),
   checkAuth: async () => {
     try {
       const res = await axiosInstance.get("/auth/check");
-      set({ authUser: res.data.user, isCheckingAuth: false });
+      set({
+        authUser: res.data.user,
+        isCheckingAuth: false,
+        isOffline: false,
+      });
       get().connectSocket();
-    } catch {
-      set({ authUser: null, isCheckingAuth: false });
+    } catch (error) {
+      if (isNetworkError(error)) {
+        set({ isCheckingAuth: false, isOffline: true });
+        return;
+      }
+
+      set({ authUser: null, isCheckingAuth: false, isOffline: false });
       get().disconnectSocket();
     }
   },
@@ -69,26 +88,90 @@ export const useAuthStore = create((set, get) => ({
   },
 
   connectSocket: () => {
-    const { authUser } = get();
-    if (!authUser || get().socket?.connected) return;
+    const { authUser, socket: existingSocket } = get();
+    if (!authUser) return;
+
+    const existingSocketUserId = existingSocket?.io?.opts?.query?.userId;
+
+    if (
+      existingSocket &&
+      String(existingSocketUserId) === String(authUser._id)
+    ) {
+      if (!existingSocket.connected) {
+        existingSocket.connect();
+      }
+
+      return;
+    }
+
+    if (existingSocket) {
+      existingSocket.removeAllListeners();
+      existingSocket.disconnect();
+    }
 
     const socket = io(SERVER_URL, {
+      autoConnect: false,
       withCredentials: true,
       query: {
         userId: authUser._id,
       },
     });
-    socket.connect();
 
-    set({ socket: socket });
+    set({ socket, onlineUsers: [] });
+
+    socket.on("connect", () => {
+      if (get().socket !== socket) return;
+
+      set({ isOffline: false });
+    });
 
     socket.on("getOnlineUsers", (userIds) => {
-      set({ onlineUsers: userIds });
+      if (get().socket !== socket) return;
+
+      set({ onlineUsers: [...new Set(userIds.map(String))] });
     });
+
+    socket.on("connect_error", (error) => {
+      if (get().socket !== socket || !isNetworkError(error)) return;
+
+      set({ isOffline: true });
+    });
+
+    socket.on("disconnect", () => {
+      if (get().socket !== socket) return;
+
+      set({
+        onlineUsers: [],
+        isOffline: isBrowser ? !navigator.onLine : false,
+      });
+    });
+
+    socket.connect();
+  },
+  handleBrowserOffline: () => {
+    set({ isOffline: true, onlineUsers: [] });
+  },
+  handleBrowserOnline: () => {
+    set({ isOffline: false });
+
+    const { authUser, socket } = get();
+
+    if (socket) {
+      socket.connect();
+      return;
+    }
+
+    if (authUser) {
+      get().connectSocket();
+      return;
+    }
+
+    get().checkAuth();
   },
   disconnectSocket: () => {
     const socket = get().socket;
-    if (socket?.connected) socket.disconnect();
-    set({ socket: null });
+    socket?.removeAllListeners();
+    socket?.disconnect();
+    set({ socket: null, onlineUsers: [] });
   },
 }));

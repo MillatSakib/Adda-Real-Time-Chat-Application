@@ -43,8 +43,6 @@ services:
     restart: always
     depends_on:
       - backend
-    env_file:
-      - ./Frontend/.env
     networks:
       - app-network
     ports:

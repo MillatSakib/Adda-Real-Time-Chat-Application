@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Phone, PhoneOff } from "lucide-react";
 import defaultProfile from "../assets/avatar.webp";
 import { useCallStore } from "../store/useCallStore";
@@ -11,11 +11,20 @@ const statusCopy = {
   connected: "Live",
 };
 
+const formatCallDuration = (elapsedMs) => {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
+
 export default function CallInterface() {
   const {
     incomingCall,
     activeCall,
     callStatus,
+    callConnectedAt,
     remoteStream,
     isMuted,
     acceptIncomingCall,
@@ -25,6 +34,7 @@ export default function CallInterface() {
   } = useCallStore();
 
   const remoteAudioRef = useRef(null);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (remoteAudioRef.current) {
@@ -32,9 +42,24 @@ export default function CallInterface() {
     }
   }, [remoteStream]);
 
+  useEffect(() => {
+    if (callStatus !== "connected" || !callConnectedAt) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [callStatus, callConnectedAt]);
+
   if (!incomingCall && !activeCall) return null;
 
   const callUser = incomingCall?.caller || activeCall?.user;
+  const callDuration =
+    callStatus === "connected" && callConnectedAt
+      ? formatCallDuration(Math.max(0, now - callConnectedAt))
+      : null;
+  const statusLabel = callDuration || statusCopy[callStatus];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral/70 p-4 backdrop-blur-sm py-8">
@@ -78,7 +103,7 @@ export default function CallInterface() {
               <h2 className="text-xl font-semibold">{callUser?.fullName}</h2>
             </div>
             <span className="badge badge-outline px-3 py-3">
-              {statusCopy[callStatus]}
+              {statusLabel}
             </span>
           </div>
           <div className="p-4">
@@ -91,9 +116,11 @@ export default function CallInterface() {
                 />
                 <p className="text-lg font-medium">{callUser?.fullName}</p>
                 <p className="text-sm text-white/70">
-                  {remoteStream
-                    ? "Connected"
-                    : `Waiting for ${callUser?.fullName}...`}
+                  {callDuration
+                    ? `Call time ${callDuration}`
+                    : remoteStream
+                      ? "Connected"
+                      : `Waiting for ${callUser?.fullName}...`}
                 </p>
               </div>
             </div>
