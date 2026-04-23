@@ -12,7 +12,7 @@ const ChatContainer = () => {
     messages,
     getMessages,
     isMessagesLoading,
-    selectedUser,
+    selectedChat,
     typingFeedback,
     viewerFeedback,
     sendViewerFeedback,
@@ -21,21 +21,35 @@ const ChatContainer = () => {
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
   const viewerName = authUser?.fullName || "Someone";
+  const isGroupChat = selectedChat?.type === "group";
+  const selectedChatId = selectedChat?._id;
+  const selectedChatType = selectedChat?.type;
 
   useEffect(() => {
-    getMessages(selectedUser._id);
+    if (!selectedChatId) return;
 
-    sendViewerFeedback(
-      selectedUser._id,
-      `${viewerName} is looking at your messages like a cat.`,
-    );
+    getMessages({
+      _id: selectedChatId,
+      type: selectedChatType,
+    });
+
+    if (!isGroupChat) {
+      sendViewerFeedback(
+        selectedChatId,
+        `${viewerName} is looking at your messages like a cat.`,
+      );
+    }
 
     return () => {
-      stopViewerFeedback(selectedUser._id);
+      if (!isGroupChat) {
+        stopViewerFeedback(selectedChatId);
+      }
     };
   }, [
+    isGroupChat,
     viewerName,
-    selectedUser._id,
+    selectedChatId,
+    selectedChatType,
     getMessages,
     sendViewerFeedback,
     stopViewerFeedback,
@@ -73,13 +87,20 @@ const ChatContainer = () => {
                   src={
                     message.senderId === authUser._id
                       ? authUser.profilePicture || "/avatar.png"
-                      : selectedUser.profilePicture || "/avatar.png"
+                      : isGroupChat
+                        ? message.sender?.profilePicture || "/avatar.png"
+                        : selectedChat.profilePicture || "/avatar.png"
                   }
                   alt="profile pic"
                 />
               </div>
             </div>
             <div className="chat-header mb-1">
+              {isGroupChat && message.senderId !== authUser._id && (
+                <span className="mr-2 text-xs font-medium text-primary/90">
+                  {message.sender?.fullName || "Group member"}
+                </span>
+              )}
               <time className="text-xs opacity-50 ml-1">
                 {formatMessageTime(message.createdAt)}
               </time>

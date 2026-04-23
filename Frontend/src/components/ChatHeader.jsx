@@ -1,13 +1,14 @@
-import { Phone, X } from "lucide-react";
+import { Phone, Users, X } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 import { canUseCalling, useCallStore } from "../store/useCallStore";
 
 const ChatHeader = () => {
-  const { selectedUser, setSelectedUser } = useChatStore();
+  const { selectedChat, setSelectedChat } = useChatStore();
   const isUserOnline = useAuthStore((state) => state.isUserOnline);
   const startCall = useCallStore((state) => state.startCall);
-  const selectedUserOnline = isUserOnline(selectedUser._id);
+  const isGroupChat = selectedChat?.type === "group";
+  const selectedUserOnline = !isGroupChat && isUserOnline(selectedChat._id);
   const callTitle = !selectedUserOnline
     ? "User is offline"
     : !canUseCalling()
@@ -18,37 +19,49 @@ const ChatHeader = () => {
     <div className="p-2.5 border-b border-base-300">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {/* Avatar */}
           <div className="avatar">
             <div className="size-10 rounded-full relative">
-              <img
-                src={selectedUser.profilePicture || "/avatar.png"}
-                alt={selectedUser.fullName}
-              />
+              {isGroupChat ? (
+                <div className="flex size-10 items-center justify-center rounded-full bg-primary/15 text-primary">
+                  <Users className="size-5" />
+                </div>
+              ) : (
+                <img
+                  src={selectedChat.profilePicture || "/avatar.png"}
+                  alt={selectedChat.fullName}
+                />
+              )}
             </div>
           </div>
 
-          {/* User info */}
           <div>
-            <h3 className="font-medium">{selectedUser.fullName}</h3>
+            <h3 className="font-medium">
+              {isGroupChat ? selectedChat.name : selectedChat.fullName}
+            </h3>
             <p className="text-sm text-base-content/70">
-              {selectedUserOnline ? "Online" : "Offline"}
+              {isGroupChat
+                ? `${selectedChat.membersCount || selectedChat.members?.length || 0} members`
+                : selectedUserOnline
+                  ? "Online"
+                  : "Offline"}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            className="btn btn-sm btn-circle"
-            onClick={() => startCall(selectedUser)}
-            disabled={!selectedUserOnline}
-            title={callTitle}
-          >
-            <Phone className="size-4" />
-          </button>
+          {!isGroupChat && (
+            <button
+              className="btn btn-sm btn-circle"
+              onClick={() => startCall(selectedChat)}
+              disabled={!selectedUserOnline}
+              title={callTitle}
+            >
+              <Phone className="size-4" />
+            </button>
+          )}
           <button
             className="btn btn-sm btn-ghost btn-circle"
-            onClick={() => setSelectedUser(null)}
+            onClick={() => setSelectedChat(null)}
           >
             <X />
           </button>

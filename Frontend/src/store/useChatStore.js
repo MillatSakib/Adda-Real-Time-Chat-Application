@@ -6,28 +6,129 @@ import { playMessageNotificationSound } from "../lib/sound";
 
 let typingFeedbackTimeout = null;
 
-const buildUnreadCounts = (users) =>
-  users.reduce((counts, user) => {
-    counts[String(user._id)] = user.unreadCount || 0;
-    return counts;
-  }, {});
+const DIRECT_CHAT = "direct";
+const GROUP_CHAT = "group";
 
-const clearUnreadCountForUser = (unreadCounts, userId) => {
-  if (!userId) return unreadCounts;
+const isGroupChat = (chat) => chat?.type === GROUP_CHAT;
+
+const normalizeConversation = (conversation, fallbackType = DIRECT_CHAT) => {
+  if (!conversation?._id) return null;
 
   return {
-    ...unreadCounts,
-    [String(userId)]: 0,
+    ...conversation,
+    _id: String(conversation._id),
+    type: conversation.type || fallbackType,
+    unreadCount: conversation.unreadCount || 0,
+    members: Array.isArray(conversation.members)
+      ? conversation.members.map((member) => ({
+          ...member,
+          _id: String(member._id),
+        }))
+      : [],
   };
 };
 
-const incrementUnreadCountForUser = (unreadCounts, userId) => {
-  const key = String(userId);
+const normalizeConversationList = (items, type) =>
+  Array.isArray(items)
+    ? items
+        .map((item) => normalizeConversation(item, type))
+        .filter(Boolean)
+    : [];
+
+const normalizeMessage = (message) => {
+  const sender =
+    message?.sender ||
+    (message?.senderId && typeof message.senderId === "object"
+      ? message.senderId
+      : null);
+  const senderId = sender?._id || message?.senderId || null;
+  const receiver =
+    message?.receiverId && typeof message.receiverId === "object"
+      ? message.receiverId
+      : null;
+  const receiverId = receiver?._id || message?.receiverId || null;
+  const group =
+    message?.group ||
+    (message?.groupId && typeof message.groupId === "object"
+      ? message.groupId
+      : null);
+  const groupId = group?._id || message?.groupId || null;
+
+  return {
+    ...message,
+    _id: String(message._id),
+    sender: sender
+      ? {
+          ...sender,
+          _id: String(sender._id),
+        }
+      : null,
+    senderId: senderId ? String(senderId) : null,
+    receiverId: receiverId ? String(receiverId) : null,
+    group: group ? normalizeConversation(group, GROUP_CHAT) : null,
+    groupId: groupId ? String(groupId) : null,
+    readBy: Array.isArray(message.readBy)
+      ? message.readBy.map((value) => String(value?._id || value))
+      : [],
+  };
+};
+
+const buildUnreadCounts = (users, groups) =>
+  [...users, ...groups].reduce((counts, item) => {
+    counts[String(item._id)] = item.unreadCount || 0;
+    return counts;
+  }, {});
+
+const clearUnreadCount = (unreadCounts, conversationId) => {
+  if (!conversationId) return unreadCounts;
+
+  return {
+    ...unreadCounts,
+    [String(conversationId)]: 0,
+  };
+};
+
+const incrementUnreadCount = (unreadCounts, conversationId) => {
+  const key = String(conversationId);
 
   return {
     ...unreadCounts,
     [key]: (unreadCounts[key] || 0) + 1,
   };
+};
+
+const upsertConversation = (items, nextItem) => {
+  const normalizedItem = normalizeConversation(nextItem, nextItem?.type);
+  if (!normalizedItem) return items;
+
+  const existingIndex = items.findIndex(
+    (item) =>
+      String(item._id) === String(normalizedItem._id) &&
+      item.type === normalizedItem.type,
+  );
+
+  if (existingIndex === -1) {
+    return [normalizedItem, ...items];
+  }
+
+  const updatedItems = [...items];
+  updatedItems[existingIndex] = {
+    ...updatedItems[existingIndex],
+    ...normalizedItem,
+  };
+
+  return updatedItems;
+};
+
+const updateSelectedChat = (selectedChat, users, groups) => {
+  if (!selectedChat?._id) return null;
+
+  const source = isGroupChat(selectedChat) ? groups : users;
+  const nextSelectedChat = source.find(
+    (item) => String(item._id) === String(selectedChat._id),
+  );
+
+  return nextSelectedChat || selectedChat;
 };
 
 const clearTypingFeedbackTimeout = () => {
@@ -37,8 +138,9 @@ const clearTypingFeedbackTimeout = () => {
   }
 };
 
-const handleIncomingMessage = (newMessage, set, get) => {
-  const activeUser = get().selectedUser;
+const handleIncomingDirectMessage = (incomingMessage, set, get) => {
+  const newMessage = normalizeMessage(incomingMessage);
+  const activeChat = get().selectedChat;
   const authUserId = useAuthStore.getState().authUser?._id;
   const senderId = String(newMessage.senderId);
   const isIncomingMessage =
@@ -46,67 +148,142 @@ const handleIncomingMessage = (newMessage, set, get) => {
     String(newMessage.receiverId) === String(authUserId) &&
     senderId !== String(authUserId);
 
-  if (isIncomingMessage) {
-    playMessageNotificationSound();
-  }
+  if (!isIncomingMessage) return;
 
-  if (!isIncomingMessage) {
-    return;
-  }
+  playMessageNotificationSound();
 
-  if (activeUser && senderId === String(activeUser._id)) {
+  if (
+    activeChat &&
+    !isGroupChat(activeChat) &&
+    senderId === String(activeChat._id)
+  ) {
     clearTypingFeedbackTimeout();
     set((state) => ({
       messages: [...state.messages, newMessage],
       typingFeedback: null,
-      unreadCounts: clearUnreadCountForUser(state.unreadCounts, senderId),
+      unreadCounts: clearUnreadCount(state.unreadCounts, senderId),
     }));
     get().markMessagesAsRead(senderId);
     return;
   }
 
   set((state) => ({
-    unreadCounts: incrementUnreadCountForUser(state.unreadCounts, senderId),
+    unreadCounts: incrementUnreadCount(state.unreadCounts, senderId),
+  }));
+};
+
+const handleIncomingGroupMessage = (incomingMessage, set, get) => {
+  const newMessage = normalizeMessage(incomingMessage);
+  const activeChat = get().selectedChat;
+  const authUserId = useAuthStore.getState().authUser?._id;
+
+  if (!newMessage.groupId || String(newMessage.senderId) === String(authUserId)) {
+    return;
+  }
+
+  playMessageNotificationSound();
+
+  if (
+    activeChat &&
+    isGroupChat(activeChat) &&
+    String(activeChat._id) === String(newMessage.groupId)
+  ) {
+    set((state) => ({
+      messages: [...state.messages, newMessage],
+      unreadCounts: clearUnreadCount(state.unreadCounts, newMessage.groupId),
+    }));
+    get().markGroupMessagesAsRead(newMessage.groupId);
+    return;
+  }
+
+  set((state) => ({
+    unreadCounts: incrementUnreadCount(state.unreadCounts, newMessage.groupId),
+    groups: newMessage.group
+      ? upsertConversation(state.groups, newMessage.group)
+      : state.groups,
   }));
 };
 
 export const useChatStore = create((set, get) => ({
   messages: [],
   users: [],
+  groups: [],
   unreadCounts: {},
-  selectedUser: null,
+  selectedChat: null,
   typingFeedback: null,
   viewerFeedback: null,
   isUsersLoading: false,
   isMessagesLoading: false,
+  isCreatingGroup: false,
 
-  getUsers: async () => {
+  getConversations: async () => {
     set({ isUsersLoading: true });
     try {
       const res = await axiosInstance.get("/messages/users");
-      set({
-        users: res.data,
-        unreadCounts: buildUnreadCounts(res.data),
-      });
+      const users = normalizeConversationList(res.data.users, DIRECT_CHAT);
+      const groups = normalizeConversationList(res.data.groups, GROUP_CHAT);
+
+      set((state) => ({
+        users,
+        groups,
+        unreadCounts: buildUnreadCounts(users, groups),
+        selectedChat: updateSelectedChat(state.selectedChat, users, groups),
+      }));
     } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to load users");
+      toast.error(
+        error.response?.data?.message || "Failed to load conversations",
+      );
     } finally {
       set({ isUsersLoading: false });
     }
   },
 
-  getMessages: async (userId) => {
+  createGroup: async (payload) => {
+    set({ isCreatingGroup: true });
+    try {
+      const res = await axiosInstance.post("/messages/groups", payload);
+      const group = normalizeConversation(res.data, GROUP_CHAT);
+
+      set((state) => ({
+        groups: upsertConversation(state.groups, group),
+        selectedChat: group,
+        unreadCounts: clearUnreadCount(state.unreadCounts, group?._id),
+      }));
+
+      toast.success("Group created successfully");
+      return group;
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to create group";
+      toast.error(message);
+      throw new Error(message);
+    } finally {
+      set({ isCreatingGroup: false });
+    }
+  },
+
+  getMessages: async (chat) => {
+    if (!chat?._id) return;
+
     clearTypingFeedbackTimeout();
     set({
       isMessagesLoading: true,
       typingFeedback: null,
       viewerFeedback: null,
     });
+
     try {
-      const res = await axiosInstance.get(`/messages/${userId}`);
+      const url = isGroupChat(chat)
+        ? `/messages/groups/${chat._id}/messages`
+        : `/messages/${chat._id}`;
+      const res = await axiosInstance.get(url);
+      const messages = Array.isArray(res.data)
+        ? res.data.map(normalizeMessage)
+        : [];
+
       set((state) => ({
-        messages: res.data,
-        unreadCounts: clearUnreadCountForUser(state.unreadCounts, userId),
+        messages,
+        unreadCounts: clearUnreadCount(state.unreadCounts, chat._id),
       }));
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to load messages");
@@ -114,19 +291,33 @@ export const useChatStore = create((set, get) => ({
       set({ isMessagesLoading: false });
     }
   },
+
   sendMessage: async (messageData) => {
-    const { selectedUser, messages } = get();
+    const { selectedChat, messages } = get();
+    if (!selectedChat?._id) {
+      throw new Error("No chat selected");
+    }
+
     try {
-      const res = await axiosInstance.post(
-        `/messages/send/${selectedUser._id}`,
-        messageData,
-      );
+      const url = isGroupChat(selectedChat)
+        ? `/messages/groups/${selectedChat._id}/messages`
+        : `/messages/send/${selectedChat._id}`;
+      const res = await axiosInstance.post(url, messageData);
+      const newMessage = normalizeMessage(res.data);
+
       clearTypingFeedbackTimeout();
       set({
-        messages: [...messages, res.data],
+        messages: [...messages, newMessage],
         typingFeedback: null,
       });
-      return res.data;
+
+      if (newMessage.group) {
+        set((state) => ({
+          groups: upsertConversation(state.groups, newMessage.group),
+        }));
+      }
+
+      return newMessage;
     } catch (error) {
       const message =
         error.response?.data?.message || "Failed to send message";
@@ -139,7 +330,7 @@ export const useChatStore = create((set, get) => ({
     if (!userId) return;
 
     set((state) => ({
-      unreadCounts: clearUnreadCountForUser(state.unreadCounts, userId),
+      unreadCounts: clearUnreadCount(state.unreadCounts, userId),
     }));
 
     try {
@@ -149,20 +340,59 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
+  markGroupMessagesAsRead: async (groupId) => {
+    if (!groupId) return;
+
+    set((state) => ({
+      unreadCounts: clearUnreadCount(state.unreadCounts, groupId),
+    }));
+
+    try {
+      await axiosInstance.patch(`/messages/groups/${groupId}/read`);
+    } catch (error) {
+      console.error("Failed to mark group messages as read:", error);
+    }
+  },
+
   initializeMessageHandlers: (socket) => {
     if (!socket) return;
 
     socket.off("newMessage");
+    socket.off("newGroupMessage");
     socket.off("typing:update");
     socket.off("chat:view");
+    socket.off("group:created");
 
     socket.on("newMessage", (newMessage) => {
-      handleIncomingMessage(newMessage, set, get);
+      handleIncomingDirectMessage(newMessage, set, get);
+    });
+
+    socket.on("newGroupMessage", (newMessage) => {
+      handleIncomingGroupMessage(newMessage, set, get);
+    });
+
+    socket.on("group:created", (group) => {
+      const normalizedGroup = normalizeConversation(group, GROUP_CHAT);
+
+      set((state) => {
+        const groups = upsertConversation(state.groups, normalizedGroup);
+
+        return {
+          groups,
+          selectedChat: updateSelectedChat(state.selectedChat, state.users, groups),
+          unreadCounts: {
+            ...state.unreadCounts,
+            [normalizedGroup._id]:
+              state.unreadCounts[normalizedGroup._id] || 0,
+          },
+        };
+      });
     });
 
     socket.on("typing:update", ({ from, feedback, isTyping }) => {
-      const activeUser = get().selectedUser;
-      if (!activeUser || String(from) !== String(activeUser._id)) return;
+      const activeChat = get().selectedChat;
+      if (!activeChat || isGroupChat(activeChat)) return;
+      if (String(from) !== String(activeChat._id)) return;
 
       clearTypingFeedbackTimeout();
 
@@ -180,8 +410,9 @@ export const useChatStore = create((set, get) => ({
     });
 
     socket.on("chat:view", ({ from, feedback, isViewing }) => {
-      const activeUser = get().selectedUser;
-      if (!activeUser || String(from) !== String(activeUser._id)) return;
+      const activeChat = get().selectedChat;
+      if (!activeChat || isGroupChat(activeChat)) return;
+      if (String(from) !== String(activeChat._id)) return;
 
       set({
         viewerFeedback: isViewing && feedback ? feedback : null,
@@ -237,20 +468,20 @@ export const useChatStore = create((set, get) => ({
     if (!socket) return;
 
     socket.off("newMessage");
+    socket.off("newGroupMessage");
     socket.off("typing:update");
     socket.off("chat:view");
+    socket.off("group:created");
   },
 
-  setSelectedUser: (selectedUser) => {
+  setSelectedChat: (selectedChat) => {
     clearTypingFeedbackTimeout();
     set((state) => ({
-      selectedUser,
+      selectedChat,
+      messages: [],
       typingFeedback: null,
       viewerFeedback: null,
-      unreadCounts: clearUnreadCountForUser(
-        state.unreadCounts,
-        selectedUser?._id,
-      ),
+      unreadCounts: clearUnreadCount(state.unreadCounts, selectedChat?._id),
     }));
   },
 }));

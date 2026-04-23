@@ -46,9 +46,10 @@ const MessageInput = () => {
   const typingIntervalsRef = useRef([]);
   const lockedFeedbackRef = useRef(null);
   const previousSelectedUserIdRef = useRef(null);
-  const { selectedUser, sendMessage, sendTypingFeedback, stopTypingFeedback } =
+  const { selectedChat, sendMessage, sendTypingFeedback, stopTypingFeedback } =
     useChatStore();
   const authUser = useAuthStore((state) => state.authUser);
+  const isGroupChat = selectedChat?.type === "group";
 
   const resetTypingSession = useCallback(() => {
     if (typingTimeoutRef.current) {
@@ -75,13 +76,13 @@ const MessageInput = () => {
 
     if (
       previousSelectedUserId &&
-      previousSelectedUserId !== selectedUser?._id
+      previousSelectedUserId !== selectedChat?._id
     ) {
       stopTypingSession(previousSelectedUserId);
     }
 
-    previousSelectedUserIdRef.current = selectedUser?._id || null;
-  }, [selectedUser?._id, stopTypingSession]);
+    previousSelectedUserIdRef.current = !isGroupChat ? selectedChat?._id || null : null;
+  }, [isGroupChat, selectedChat?._id, stopTypingSession]);
 
   useEffect(() => {
     return () => {
@@ -91,6 +92,7 @@ const MessageInput = () => {
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
+    if (!file) return;
     if (!file.type.startsWith("image/")) {
       toast.error("Please select an image file");
       return;
@@ -110,7 +112,7 @@ const MessageInput = () => {
 
   const handleTextChange = (e) => {
     const nextText = e.target.value;
-    const targetUserId = selectedUser?._id;
+    const targetUserId = !isGroupChat ? selectedChat?._id : null;
     const senderName = authUser?.fullName;
 
     setText(nextText);
@@ -171,7 +173,7 @@ const MessageInput = () => {
         image: imagePreview,
       });
 
-      stopTypingSession(selectedUser?._id);
+      stopTypingSession(!isGroupChat ? selectedChat?._id : null);
       setText("");
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -207,10 +209,12 @@ const MessageInput = () => {
           <input
             type="text"
             className="w-full input input-bordered rounded-lg input-sm sm:input-md"
-            placeholder="Type a message..."
+            placeholder={
+              isGroupChat ? "Message the group..." : "Type a message..."
+            }
             value={text}
             onChange={handleTextChange}
-            onBlur={() => stopTypingSession(selectedUser?._id)}
+            onBlur={() => stopTypingSession(!isGroupChat ? selectedChat?._id : null)}
           />
           <input
             type="file"

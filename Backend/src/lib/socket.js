@@ -79,13 +79,26 @@ const getOnlineUserIds = () => {
 };
 
 export const getReceiverSocketId = (userId) => getUserSocketIds(userId).at(-1);
-const emitToUser = (userId, event, payload) => {
-  const socketId = getReceiverSocketId(userId);
-  if (socketId) {
+export const emitToUser = (userId, event, payload) => {
+  const socketIds = getUserSocketIds(userId);
+  if (socketIds.length === 0) return false;
+
+  socketIds.forEach((socketId) => {
     io.to(socketId).emit(event, payload);
-    return true;
-  }
-  return false;
+  });
+
+  return true;
+};
+
+export const emitToUsers = (userIds, event, payload) => {
+  const uniqueUserIds = [...new Set(userIds.map(String).filter(Boolean))];
+  let delivered = false;
+
+  uniqueUserIds.forEach((userId) => {
+    delivered = emitToUser(userId, event, payload) || delivered;
+  });
+
+  return delivered;
 };
 
 io.on("connection", (socket) => {
