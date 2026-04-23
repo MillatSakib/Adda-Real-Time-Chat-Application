@@ -476,12 +476,20 @@ export const useChatStore = create((set, get) => ({
 
   setSelectedChat: (selectedChat) => {
     clearTypingFeedbackTimeout();
-    set((state) => ({
-      selectedChat,
-      messages: [],
-      typingFeedback: null,
-      viewerFeedback: null,
-      unreadCounts: clearUnreadCount(state.unreadCounts, selectedChat?._id),
-    }));
+    set((state) => {
+      const isSameChat =
+        state.selectedChat &&
+        selectedChat &&
+        String(state.selectedChat._id) === String(selectedChat._id) &&
+        state.selectedChat.type === selectedChat.type;
+
+      return {
+        selectedChat,
+        messages: isSameChat ? state.messages : [],
+        typingFeedback: null,
+        viewerFeedback: null,
+        unreadCounts: clearUnreadCount(state.unreadCounts, selectedChat?._id),
+      };
+    });
   },
 }));
