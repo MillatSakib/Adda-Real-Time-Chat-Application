@@ -46,7 +46,10 @@ const ChatHeader = () => {
           >
             <Phone className="size-4" />
           </button>
-          <button className="btn btn-sm btn-ghost btn-circle" onClick={() => setSelectedUser(null)}>
+          <button
+            className="btn btn-sm btn-ghost btn-circle"
+            onClick={() => setSelectedUser(null)}
+          >
             <X />
           </button>
         </div>
